@@ -14,7 +14,7 @@ A lightweight HTTP server implemented in pure x64 Assembly.
 
 ## Planned Projects
 
-- Future project ideas are currently under consideration. Suggestions are welcome!
+- I don't know right now but suggestions are welcome!
 
 ## Installation
 
