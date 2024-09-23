@@ -4,15 +4,31 @@ section .data
     STDERR equ 2
     SYS_READ equ 0
     SYS_WRITE equ 1
+    SYS_OPEN equ 2
+    SYS_CLOSE equ 3
     SYS_SOCKET equ 41
+    SYS_ACCEPT equ 43
     SYS_BIND equ 49
     SYS_LISTEN equ 50
-    SYS_ACCEPT equ 43
-    SYS_CLOSE equ 3
+    SYS_FCNTL equ 72
+    SYS_EPOLL_CREATE equ 213
+    SYS_EPOLL_CTL equ 233
+    SYS_EPOLL_WAIT equ 232
+
     AF_INET equ 2
     SOCK_STREAM equ 1
     INADDR_ANY equ 0
     PORT equ 8080
+
+    EPOLLIN equ 1
+    EPOLLOUT equ 4
+    EPOLLET equ (1 << 31)
+    EPOLL_CTL_ADD equ 1
+    EPOLL_CTL_DEL equ 2
+    O_NONBLOCK equ 2048
+    F_GETFL equ 3
+    F_SETFL equ 4
+    MAX_EVENTS equ 10
 
     http_ok db 'HTTP/1.1 200 OK', 13, 10
             db 'Content-Type: text/plain', 13, 10
@@ -28,19 +44,26 @@ section .data
     space db ' ', 0
     get_str db 'GET', 0
     post_str db 'POST', 0
+
     debug_accept db 'Accepted connection', 10, 0
     debug_accept_len equ $ - debug_accept
     debug_parse db 'Parsing request', 10, 0
     debug_parse_len equ $ - debug_parse
     debug_close db 'Closed connection', 10, 0
     debug_close_len equ $ - debug_close
+    debug_epoll_create db 'Created epoll instance', 10, 0
+    debug_epoll_create_len equ $ - debug_epoll_create
+    debug_epoll_add db 'Added fd to epoll', 10, 0
+    debug_epoll_add_len equ $ - debug_epoll_add
+    debug_epoll_wait db 'Epoll wait returned', 10, 0
+    debug_epoll_wait_len equ $ - debug_epoll_wait
 
     root_path db '/', 0
-    root_response db 'Welcome to the root', 13, 10, 0
+    root_response db 'Welcome to the root!', 13, 10, 0
     root_response_len equ $ - root_response
 
     about_path db '/about', 0
-    about_response db 'This is the about page', 13, 10, 0
+    about_response db 'This is the about page.', 13, 10, 0
     about_response_len equ $ - about_response
 
     contact_path db '/contact', 0
@@ -51,6 +74,8 @@ section .bss
     buffer resb 1024
     client_socket resd 1
     server_socket resd 1
+    epoll_fd resd 1
+    events resb 32 * MAX_EVENTS  
     method resb 16
     path resb 256
     response_buffer resb 1024
@@ -59,6 +84,7 @@ section .text
 global _start
 
 _start:
+    
     mov rax, SYS_SOCKET
     mov rdi, AF_INET
     mov rsi, SOCK_STREAM
@@ -66,6 +92,7 @@ _start:
     syscall
    
     mov [server_socket], eax
+
     mov rdi, rax
     mov rax, SYS_BIND
     mov rsi, sockaddr
@@ -77,50 +104,105 @@ _start:
     mov rsi, 5
     syscall
 
-accept_loop:
+    mov rdi, [server_socket]
+    call make_socket_non_blocking
+
+    mov rax, SYS_EPOLL_CREATE
+    mov rdi, 1
+    syscall
+    mov [epoll_fd], eax
+
+    mov rdi, [epoll_fd]
+    mov rsi, EPOLL_CTL_ADD
+    mov rdx, [server_socket]
+    mov rcx, events
+    mov dword [rcx], EPOLLIN | EPOLLET
+    mov qword [rcx + 8], 0  
+    mov rax, SYS_EPOLL_CTL
+    syscall
+    
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, debug_epoll_create
+    mov rdx, debug_epoll_create_len
+    syscall
+
+event_loop:
+    
+    mov rax, SYS_EPOLL_WAIT
+    mov rdi, [epoll_fd]
+    mov rsi, events
+    mov rdx, MAX_EVENTS
+    mov r10, -1  
+    syscall
+    
+    push rax  
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, debug_epoll_wait
+    mov rdx, debug_epoll_wait_len
+    syscall
+    pop rax  
+    
+    mov r12, rax  
+    xor r13, r13  
+
+process_events:
+    cmp r13, r12
+    jge event_loop  
+
+    mov rdi, [events + r13 * 32 + 8]  
+    cmp rdi, 0
+    je accept_connection  
+    
+    call handle_client
+
+    inc r13
+    jmp process_events
+
+accept_connection:
+    
     mov rax, SYS_ACCEPT
     mov rdi, [server_socket]
     xor rsi, rsi
     xor rdx, rdx
     syscall
-
-    mov [client_socket], eax
+    
+    mov rdi, rax
+    push rax
+    call make_socket_non_blocking
+    pop rax
+    
+    mov rdi, [epoll_fd]
+    mov rsi, EPOLL_CTL_ADD
+    mov rdx, rax
+    mov rcx, events
+    mov dword [rcx], EPOLLIN | EPOLLET
+    mov [rcx + 8], rax  
+    mov rax, SYS_EPOLL_CTL
+    syscall
+    
     mov rax, SYS_WRITE
     mov rdi, STDOUT
-    mov rsi, debug_accept
-    mov rdx, debug_accept_len
+    mov rsi, debug_epoll_add
+    mov rdx, debug_epoll_add_len
     syscall
 
+    inc r13
+    jmp process_events
+
+handle_client:
+    
     mov rax, SYS_READ
-    mov rdi, [client_socket]
     mov rsi, buffer
     mov rdx, 1024
     syscall
 
     test rax, rax
     jle close_client
-
-    mov rax, SYS_WRITE
-    mov rdi, STDOUT
-    mov rsi, debug_parse
-    mov rdx, debug_parse_len
-    syscall
-
+    
     call parse_request
-    mov rsi, method
-    mov rdi, get_str
-    call strcmp
-    test rax, rax
-    jz handle_get
-    mov rsi, method
-    mov rdi, post_str
-    call strcmp
-    test rax, rax
-    jz handle_post
-    jmp send_not_found
-
-handle_get:
-handle_post:
+    
     mov rsi, path
     mov rdi, root_path
     call strcmp
@@ -138,10 +220,8 @@ handle_post:
     call strcmp
     test rax, rax
     jz send_contact_response
-
-send_not_found:
+    
     mov rax, SYS_WRITE
-    mov rdi, [client_socket]
     mov rsi, http_not_found
     mov rdx, http_not_found_len
     syscall
@@ -168,34 +248,57 @@ send_response:
     
     mov rdi, response_buffer
     mov rsi, http_ok
-    mov rdx, [rsp]
+    mov rdx, [rsp]  
     call sprintf
 
     mov rax, SYS_WRITE
-    mov rdi, [client_socket]
     mov rsi, response_buffer
-    mov rdx, rax
+    mov rdx, rax  
     syscall
 
     pop rdx
     pop rsi
 
     mov rax, SYS_WRITE
-    mov rdi, [client_socket]
     syscall
+
+    ret
 
 close_client:
     mov rax, SYS_CLOSE
-    mov rdi, [client_socket]
     syscall
 
+    mov rsi, EPOLL_CTL_DEL
+    mov rax, SYS_EPOLL_CTL
+    mov rdi, [epoll_fd]
+    xor rcx, rcx
+    syscall
+    
     mov rax, SYS_WRITE
     mov rdi, STDOUT
     mov rsi, debug_close
     mov rdx, debug_close_len
     syscall
 
-    jmp accept_loop
+    ret
+
+make_socket_non_blocking:
+    push rdi
+    mov rax, SYS_FCNTL
+    mov rsi, F_GETFL
+    xor rdx, rdx
+    syscall
+
+    mov rdx, rax
+    or rdx, O_NONBLOCK
+    pop rdi
+    push rdi
+    mov rax, SYS_FCNTL
+    mov rsi, F_SETFL
+    syscall
+
+    pop rdi
+    ret
 
 parse_request:
     mov rsi, buffer
@@ -241,8 +344,8 @@ strcmp:
 sprintf:
     push rbx
     push rcx
-    mov rbx, rdi
-    mov rcx, rdx
+    mov rbx, rdi  
+    mov rcx, rdx  
 .loop:
     mov al, [rsi]
     test al, al
@@ -267,7 +370,7 @@ sprintf:
 .done:
     mov byte [rbx], 0
     mov rax, rbx
-    sub rax, rdi
+    sub rax, rdi  
     pop rcx
     pop rbx
     ret
