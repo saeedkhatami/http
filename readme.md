@@ -37,7 +37,7 @@ This project is a basic HTTP server written in x86_64 Assembly. It currently sup
 
 ## License
 
-MIT [License](License)
+MIT [License](LICENSE)
 
 ```text
 Copyright (c) 2024 Saeed Khatami
