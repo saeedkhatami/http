@@ -41,9 +41,17 @@ section .data
                    db 'Page not found', 13, 10, 0
     http_not_found_len equ $ - http_not_found
 
+    http_method_not_allowed db 'HTTP/1.1 405 Method Not Allowed', 13, 10
+                            db 'Content-Type: text/plain', 13, 10
+                            db 'Content-Length: 18', 13, 10, 13, 10
+                            db 'Method not allowed', 13, 10, 0
+    http_method_not_allowed_len equ $ - http_method_not_allowed
+
     space db ' ', 0
     get_str db 'GET', 0
     post_str db 'POST', 0
+    put_str db 'PUT', 0
+    delete_str db 'DELETE', 0
 
     debug_accept db 'Accepted connection', 10, 0
     debug_accept_len equ $ - debug_accept
@@ -70,12 +78,26 @@ section .data
     contact_response db 'This is the contact page', 13, 10, 0
     contact_response_len equ $ - contact_response
 
+    post_response db 'POST request received', 13, 10, 0
+    post_response_len equ $ - post_response
+
+    put_response db 'PUT request received', 13, 10, 0
+    put_response_len equ $ - put_response
+
+    delete_response db 'DELETE request received', 13, 10, 0
+    delete_response_len equ $ - delete_response
+
+    struc epoll_event
+        .events: resd 1
+        .data:   resq 1
+    endstruc
+
 section .bss
     buffer resb 1024
     client_socket resd 1
     server_socket resd 1
     epoll_fd resd 1
-    events resb 32 * MAX_EVENTS  
+    events resb epoll_event_size * MAX_EVENTS
     method resb 16
     path resb 256
     response_buffer resb 1024
@@ -84,7 +106,6 @@ section .text
 global _start
 
 _start:
-    
     mov rax, SYS_SOCKET
     mov rdi, AF_INET
     mov rsi, SOCK_STREAM
@@ -115,9 +136,9 @@ _start:
     mov rdi, [epoll_fd]
     mov rsi, EPOLL_CTL_ADD
     mov rdx, [server_socket]
-    mov rcx, events
-    mov dword [rcx], EPOLLIN | EPOLLET
-    mov qword [rcx + 8], 0  
+    lea rcx, [events]
+    mov dword [rcx + epoll_event.events], EPOLLIN | EPOLLET
+    mov qword [rcx + epoll_event.data], 0
     mov rax, SYS_EPOLL_CTL
     syscall
     
@@ -128,32 +149,29 @@ _start:
     syscall
 
 event_loop:
-    
     mov rax, SYS_EPOLL_WAIT
     mov rdi, [epoll_fd]
     mov rsi, events
     mov rdx, MAX_EVENTS
-    mov r10, -1  
+    mov r10, -1
     syscall
     
-    push rax  
-    mov rax, SYS_WRITE
-    mov rdi, STDOUT
-    mov rsi, debug_epoll_wait
-    mov rdx, debug_epoll_wait_len
-    syscall
-    pop rax  
+    test rax, rax
+    jle event_loop
     
-    mov r12, rax  
-    xor r13, r13  
+    mov r12, rax
+    xor r13, r13
 
 process_events:
     cmp r13, r12
-    jge event_loop  
+    jge event_loop
 
-    mov rdi, [events + r13 * 32 + 8]  
-    cmp rdi, 0
-    je accept_connection  
+    mov r14, r13
+    imul r14, epoll_event_size
+    add r14, events
+    mov edi, [r14 + epoll_event.data]
+    cmp edi, [server_socket]
+    je accept_connection
     
     call handle_client
 
@@ -161,12 +179,14 @@ process_events:
     jmp process_events
 
 accept_connection:
-    
     mov rax, SYS_ACCEPT
     mov rdi, [server_socket]
     xor rsi, rsi
     xor rdx, rdx
     syscall
+    
+    test rax, rax
+    jl .accept_error
     
     mov rdi, rax
     push rax
@@ -176,9 +196,9 @@ accept_connection:
     mov rdi, [epoll_fd]
     mov rsi, EPOLL_CTL_ADD
     mov rdx, rax
-    mov rcx, events
-    mov dword [rcx], EPOLLIN | EPOLLET
-    mov [rcx + 8], rax  
+    lea rcx, [events + epoll_event_size]
+    mov dword [rcx + epoll_event.events], EPOLLIN | EPOLLET
+    mov [rcx + epoll_event.data], rax
     mov rax, SYS_EPOLL_CTL
     syscall
     
@@ -188,21 +208,56 @@ accept_connection:
     mov rdx, debug_epoll_add_len
     syscall
 
+.accept_error:
     inc r13
     jmp process_events
 
 handle_client:
-    
+    push rdi
+
     mov rax, SYS_READ
     mov rsi, buffer
     mov rdx, 1024
     syscall
 
     test rax, rax
-    jle close_client
+    jle .close_client
     
     call parse_request
     
+    mov rsi, method
+    mov rdi, get_str
+    call strcmp
+    test rax, rax
+    jz handle_get_request
+
+    mov rsi, method
+    mov rdi, post_str
+    call strcmp
+    test rax, rax
+    jz handle_post_request
+
+    mov rsi, method
+    mov rdi, put_str
+    call strcmp
+    test rax, rax
+    jz handle_put_request
+
+    mov rsi, method
+    mov rdi, delete_str
+    call strcmp
+    test rax, rax
+    jz handle_delete_request
+
+    call send_method_not_allowed
+    jmp .close_client
+
+.close_client:
+    pop rdi
+    call close_client
+    ret
+
+handle_get_request:
     mov rsi, path
     mov rdi, root_path
     call strcmp
@@ -226,6 +281,21 @@ handle_client:
     mov rdx, http_not_found_len
     syscall
     jmp close_client
+
+handle_post_request:
+    mov rsi, post_response
+    mov rdx, post_response_len
+    jmp send_response
+
+handle_put_request:
+    mov rsi, put_response
+    mov rdx, put_response_len
+    jmp send_response
+
+handle_delete_request:
+    mov rsi, delete_response
+    mov rdx, delete_response_len
+    jmp send_response
 
 send_root_response:
     mov rsi, root_response
@@ -262,7 +332,14 @@ send_response:
     mov rax, SYS_WRITE
     syscall
 
-    ret
+    jmp close_client
+
+send_method_not_allowed:
+    mov rax, SYS_WRITE
+    mov rsi, http_method_not_allowed
+    mov rdx, http_method_not_allowed_len
+    syscall
+    jmp close_client
 
 close_client:
     mov rax, SYS_CLOSE
