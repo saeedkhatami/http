@@ -24,9 +24,9 @@ This project is a basic HTTP server written in x86_64 Assembly. It currently sup
 
 2. Compile and run:
     ```bash
-    nasm -f elf64 server.asm -o server.o
-    ld server.o -o server
-    ./server
+    nasm -f elf64 HTTP.asm -o HTTP.o
+    ld HTTP.o -o HTTP
+    ./HTTP
     ```
 
 3. Test the server using `curl`:
