@@ -1,49 +1,45 @@
-# Simple Assembly
+# Simple HTTP Server in Assembly (x86_64)
 
-A collection of x64 Assembly projects focused on creating efficient, low-level applications and services. This project aims to demonstrate the power and flexibility of pure assembly language programming in modern contexts.
+This project is a basic HTTP server written in x86_64 Assembly. It currently supports `GET`, `POST`, `PUT`, and `DELETE` methods, with proper error handling for `404 Not Found` and `405 Method Not Allowed`. The server uses `epoll` for efficient connection handling and operates with non-blocking I/O.
 
-## Project Goal
+**Note**: This project is under development, and many features will be added soon.
 
-The primary objective is to develop various applications and services entirely in x64 Assembly, showcasing its capabilities and performance benefits.
+## Features
 
-## Current Projects
+- Supports HTTP methods: `GET`, `POST`, `PUT`, `DELETE`
+- Routes:
+  - `/` - Root (Welcome)
+  - `/about` - About page
+  - `/contact` - Contact page
+- Error responses: `404 Not Found` and `405 Method Not Allowed`
+- Non-blocking sockets using `epoll`
 
-### 1- Simple HTTP Server
+## Setup
 
-A lightweight HTTP server implemented in pure x64 Assembly.
+1. Clone and navigate to the project:
+    ```bash
+    git clone https://github.com/saeedkhatami/http.git
+    cd http
+    ```
 
-## Planned Projects
+2. Compile and run:
+    ```bash
+    nasm -f elf64 server.asm -o server.o
+    ld server.o -o server
+    ./server
+    ```
 
-- I don't know right now but suggestions are welcome!
-
-## Installation
-
-To build the projects:
-
-1. Ensure you have NASM (Netwide Assembler) installed on your system.
-2. Clone this repository: `git clone https://github.com/saeedkhatami/simpleASM`
-3. Navigate to the project directory: `cd Simple-Assembly`
-4. Use NASM to build the desired project. For example:
-   ```
-   nasm -f elf64 [filename].asm -o [filename].o
-   ld [filename].o -o [filename]
-   ```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the project
-2. Create your feature branch: `git checkout -b feature/AmazingFeature`
-3. Commit your changes: `git commit -m 'Add some AmazingFeature'`
-4. Push to the branch: `git push origin feature/AmazingFeature`
-5. Open a Pull Request
+3. Test the server using `curl`:
+    ```bash
+    curl http://localhost:8080/
+    curl -X POST http://localhost:8080/
+    ```
 
 ## License
 
-This project is licensed under the MIT License.
+MIT [License](License)
 
-```txt
+```text
 Copyright (c) 2024 Saeed Khatami
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -64,3 +60,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+### NOTE
+
+This README was generated with the assistance of AI, ensuring it's clear and easy to follow.
