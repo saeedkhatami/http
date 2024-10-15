@@ -61,8 +61,25 @@ section .data
     put_str db 'PUT', 0
     delete_str db 'DELETE', 0
 
+
+    debug_socket db 'Socket created', 10, 0
+    debug_socket_len equ $ - debug_socket
+    debug_bind db 'Socket bound', 10, 0
+    debug_bind_len equ $ - debug_bind
+    debug_listen db 'Listening for connections', 10, 0
+    debug_listen_len equ $ - debug_listen
     debug_accept db 'Accepted connection', 10, 0
     debug_accept_len equ $ - debug_accept
+    debug_read db 'Read from client', 10, 0
+    debug_read_len equ $ - debug_read
+    debug_write db 'Wrote to client', 10, 0
+    debug_write_len equ $ - debug_write
+    error_socket db 'Error creating socket', 10, 0
+    error_socket_len equ $ - error_socket
+    error_bind db 'Error binding socket', 10, 0
+    error_bind_len equ $ - error_bind
+    error_listen db 'Error listening on socket', 10, 0
+    error_listen_len equ $ - error_listen
     debug_parse db 'Parsing request', 10, 0
     debug_parse_len equ $ - debug_parse
     debug_close db 'Closed connection', 10, 0
@@ -73,6 +90,16 @@ section .data
     debug_epoll_add_len equ $ - debug_epoll_add
     debug_epoll_wait db 'Epoll wait returned', 10, 0
     debug_epoll_wait_len equ $ - debug_epoll_wait
+    error_epoll_create db 'Error creating epoll instance', 10, 0
+    error_epoll_create_len equ $ - error_epoll_create
+    error_epoll_ctl db 'Error adding fd to epoll', 10, 0
+    error_epoll_ctl_len equ $ - error_epoll_ctl
+    debug_event_loop db 'Entering event loop', 10, 0
+    debug_event_loop_len equ $ - debug_event_loop
+    debug_start db 'Program started', 10, 0
+    debug_start_len equ $ - debug_start
+    error_write db 'Error writing to stdout', 10, 0
+    error_write_len equ $ - error_write
 
     root_path db '/', 0
     root_response db 'Welcome to the root!', 13, 10, 0
@@ -115,13 +142,30 @@ section .text
 global _start
 
 _start:
+_start:
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, debug_start
+    mov rdx, debug_start_len
+    syscall
+
+    cmp rax, -1
+    je write_error
+
     mov rax, SYS_SOCKET
     mov rdi, AF_INET
     mov rsi, SOCK_STREAM
     xor rdx, rdx
     syscall
    
+    test rax, rax
+    js .socket_error
+    
     mov [server_socket], eax
+    
+    mov rdi, debug_socket
+    mov rsi, debug_socket_len
+    call debug_print
 
     mov rdi, rax
     mov rax, SYS_BIND
@@ -129,35 +173,90 @@ _start:
     mov rdx, 16
     syscall
 
+    test rax, rax
+    jnz .bind_error
+
+    mov rdi, debug_bind
+    mov rsi, debug_bind_len
+    call debug_print
+
     mov rax, SYS_LISTEN
     mov rdi, [server_socket]
     mov rsi, 5
     syscall
 
-    mov rdi, [server_socket]
-    call make_socket_non_blocking
+    test rax, rax
+    jnz .listen_error
+
+    mov rdi, debug_listen
+    mov rsi, debug_listen_len
+    call debug_print
 
     mov rax, SYS_EPOLL_CREATE
     mov rdi, 1
     syscall
+
+    test rax, rax
+    js .epoll_create_error
+
     mov [epoll_fd], eax
+
+    mov rdi, debug_epoll_create
+    mov rsi, debug_epoll_create_len
+    call debug_print
 
     mov rdi, [epoll_fd]
     mov rsi, EPOLL_CTL_ADD
     mov rdx, [server_socket]
     lea rcx, [events]
-    mov dword [rcx + epoll_event.events], EPOLLIN | EPOLLET
-    mov qword [rcx + epoll_event.data], 0
+    mov dword [rcx + epoll_event.events], EPOLLIN
+    mov [rcx + epoll_event.data], rdx
     mov rax, SYS_EPOLL_CTL
     syscall
-    
-    mov rax, SYS_WRITE
-    mov rdi, STDOUT
-    mov rsi, debug_epoll_create
-    mov rdx, debug_epoll_create_len
-    syscall
+
+    test rax, rax
+    jnz .epoll_ctl_error
+
+    mov rdi, debug_epoll_add
+    mov rsi, debug_epoll_add_len
+    call debug_print
+
+    jmp event_loop
+
+.socket_error:
+    mov rdi, error_socket
+    mov rsi, error_socket_len
+    call debug_print
+    jmp exit_program
+
+.bind_error:
+    mov rdi, error_bind
+    mov rsi, error_bind_len
+    call debug_print
+    jmp exit_program
+
+.listen_error:
+    mov rdi, error_listen
+    mov rsi, error_listen_len
+    call debug_print
+    jmp exit_program
+
+.epoll_create_error:
+    mov rdi, error_epoll_create
+    mov rsi, error_epoll_create_len
+    call debug_print
+    jmp exit_program
+
+.epoll_ctl_error:
+    mov rdi, error_epoll_ctl
+    mov rsi, error_epoll_ctl_len
+    call debug_print
+    jmp exit_program
 
 event_loop:
+    mov rdi, debug_event_loop
+    mov rsi, debug_event_loop_len
+    call debug_print
     mov rax, SYS_EPOLL_WAIT
     mov rdi, [epoll_fd]
     mov rsi, events
@@ -232,6 +331,12 @@ handle_client:
     test rax, rax
     jle .close_client
     
+    push rax
+    mov rdi, debug_read
+    mov rsi, debug_read_len
+    call debug_print
+    pop rax
+
     call parse_request
     
     mov rsi, method
@@ -335,11 +440,23 @@ send_response:
     mov rdx, rax  
     syscall
 
+    push rax
+    mov rdi, debug_write
+    mov rsi, debug_write_len
+    call debug_print
+    pop rax
+
     pop rdx
     pop rsi
 
     mov rax, SYS_WRITE
     syscall
+
+    push rax
+    mov rdi, debug_write
+    mov rsi, debug_write_len
+    call debug_print
+    pop rax
 
     jmp close_client
 
@@ -411,6 +528,11 @@ parse_header:
     push rsi
     push rdi
 
+.header_name_end:
+    mov byte [rdi], 0
+    inc rdi
+    inc rsi
+
 .parse_header_name:
     mov al, [rsi]
     cmp al, ':'
@@ -418,12 +540,23 @@ parse_header:
     mov [rdi], al
     inc rsi
     inc rdi
-    jmp .parse_header_name
+    jmp .parse_header_name  
 
-.header_name_end:
-    mov byte [rdi], 0
-    inc rdi
-    inc rsi
+debug_print:
+    push rax
+    push rdi
+    push rsi
+    push rdx
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rdx, rsi
+    mov rsi, rdi
+    syscall
+    pop rdx
+    pop rsi
+    pop rdi
+    pop rax
+    ret
     
 .skip_spaces:
     mov al, [rsi]
@@ -547,6 +680,19 @@ int_to_str:
     pop rdx
     pop rbx
     ret
+
+write_error:
+    mov rax, SYS_WRITE
+    mov rdi, STDERR
+    mov rsi, error_write
+    mov rdx, error_write_len
+    syscall
+    jmp exit_program
+
+exit_program:
+    mov rax, 60
+    mov rdi, 1
+    syscall
 
 section .data
     sockaddr:
