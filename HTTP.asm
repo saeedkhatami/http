@@ -31,23 +31,31 @@ section .data
     MAX_EVENTS equ 10
 
     http_ok db 'HTTP/1.1 200 OK', 13, 10
+            db 'Server: Assembly HTTP Server', 13, 10
             db 'Content-Type: text/plain', 13, 10
-            db 'Content-Length: %d', 13, 10, 13, 10, 0
+            db 'Content-Length: %d', 13, 10
+            db 'Connection: close', 13, 10, 13, 10, 0
     http_ok_len equ $ - http_ok
 
     http_not_found db 'HTTP/1.1 404 Not Found', 13, 10
+                   db 'Server: Assembly HTTP Server', 13, 10
                    db 'Content-Type: text/plain', 13, 10
-                   db 'Content-Length: 14', 13, 10, 13, 10
+                   db 'Content-Length: 14', 13, 10
+                   db 'Connection: close', 13, 10, 13, 10
                    db 'Page not found', 13, 10, 0
     http_not_found_len equ $ - http_not_found
 
     http_method_not_allowed db 'HTTP/1.1 405 Method Not Allowed', 13, 10
+                            db 'Server: Assembly HTTP Server', 13, 10
                             db 'Content-Type: text/plain', 13, 10
-                            db 'Content-Length: 18', 13, 10, 13, 10
+                            db 'Content-Length: 18', 13, 10
+                            db 'Connection: close', 13, 10, 13, 10
                             db 'Method not allowed', 13, 10, 0
     http_method_not_allowed_len equ $ - http_method_not_allowed
 
     space db ' ', 0
+    newline db 13, 10, 0
+    colon db ':', 0
     get_str db 'GET', 0
     post_str db 'POST', 0
     put_str db 'PUT', 0
@@ -93,14 +101,15 @@ section .data
     endstruc
 
 section .bss
-    buffer resb 1024
+    buffer resb 4096
     client_socket resd 1
     server_socket resd 1
     epoll_fd resd 1
     events resb epoll_event_size * MAX_EVENTS
     method resb 16
     path resb 256
-    response_buffer resb 1024
+    response_buffer resb 4096
+    headers resb 2048
 
 section .text
 global _start
@@ -217,7 +226,7 @@ handle_client:
 
     mov rax, SYS_READ
     mov rsi, buffer
-    mov rdx, 1024
+    mov rdx, 4096
     syscall
 
     test rax, rax
@@ -383,6 +392,51 @@ parse_request:
     call parse_until_space
     mov rdi, path
     call parse_until_space
+    
+    call parse_until_newline
+
+    mov rdi, headers
+.parse_headers_loop:
+    mov al, [rsi]
+    cmp al, 13
+    je .headers_end
+    call parse_header
+    jmp .parse_headers_loop
+
+.headers_end:
+    add rsi, 2
+    ret
+
+parse_header:
+    push rsi
+    push rdi
+
+.parse_header_name:
+    mov al, [rsi]
+    cmp al, ':'
+    je .header_name_end
+    mov [rdi], al
+    inc rsi
+    inc rdi
+    jmp .parse_header_name
+
+.header_name_end:
+    mov byte [rdi], 0
+    inc rdi
+    inc rsi
+    
+.skip_spaces:
+    mov al, [rsi]
+    cmp al, ' '
+    jne .parse_header_value
+    inc rsi
+    jmp .skip_spaces
+
+.parse_header_value:
+    call parse_until_newline
+    
+    pop rdi
+    pop rsi
     ret
 
 parse_until_space:
@@ -394,11 +448,27 @@ parse_until_space:
     mov [rdi + rcx], al
     inc rsi
     inc rcx
-    cmp rcx, 15
+    cmp rcx, 255
     jl .loop
 .done:
     mov byte [rdi + rcx], 0
     inc rsi
+    ret
+
+parse_until_newline:
+    xor rcx, rcx
+.loop:
+    mov al, [rsi]
+    cmp al, 13
+    je .done
+    mov [rdi + rcx], al
+    inc rsi
+    inc rcx
+    cmp rcx, 1023
+    jl .loop
+.done:
+    mov byte [rdi + rcx], 0
+    add rsi, 2
     ret
 
 strcmp:
