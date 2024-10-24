@@ -7,7 +7,7 @@ C_SRCS = src/main.c
 ASM_SRCS = src/server_asm.asm
 OBJS = $(C_SRCS:.c=.o) $(ASM_SRCS:.asm=.o)
 
-TARGET = hybrid_server
+TARGET = http_server
 
 .PHONY: all clean
 
