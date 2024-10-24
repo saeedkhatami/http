@@ -1,0 +1,67 @@
+name: "Run Server"
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Dependencies
+      run: |
+        sudo apt update
+        sudo apt install gcc nasm -y
+
+    - name: Make
+      run: |
+        make
+
+    - name: Chmod
+      run: chmod +x http_server 
+
+    - name: Run server
+      run: |
+        ./http_server &
+        sleep 5
+        curl http://localhost:8080
+
+    - name: Upload artifact (Compiled server)
+      uses: actions/upload-artifact@v3
+      with:
+        name: http_server
+        path: ./http_server
+
+    - name: Clean
+      run: |
+        make clean
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Download artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: http_server
+
+    - name: Create GitHub Release and Upload Asset
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: http_server
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: "0.0.${{ github.run_number }}"
+        name: "Release v0.0.${{ github.run_number }}"
+        commit: ${{ github.sha }}
+        body: "Automated release for build v1.0.${{ github.run_number }}"
+        draft: true
+        prerelease: true
