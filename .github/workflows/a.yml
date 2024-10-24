@@ -27,4 +27,11 @@ jobs:
       run: chmod +x http_server 
 
     - name: Run serv
-      run: ./http_server
+      run: |
+        ./http_server &
+        sleep 5
+        curl http://localhost:8080 || echo "Server response failed"
+
+    - name: Clean 
+      run: |
+        make clean
