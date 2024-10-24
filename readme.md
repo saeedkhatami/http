@@ -1,6 +1,6 @@
 # Simple HTTP Server in Assembly (x86_64)
 
-This project is a basic HTTP server written in x86_64 Assembly. It currently supports `GET`, `POST`, `PUT`, and `DELETE` methods, with proper error handling for `404 Not Found` and `405 Method Not Allowed`. The server uses `epoll` for efficient connection handling and operates with non-blocking I/O.
+This project is a basic HTTP server written in x86_64 Assembly. It currently supports `GET`, `POST`, `PUT`, and `DELETE` methods, with proper error handling for `404 Not Found` and `405 Method Not Allowed`.
 
 **Note**: This project is under development, and many features will be added soon.
 
@@ -24,9 +24,8 @@ This project is a basic HTTP server written in x86_64 Assembly. It currently sup
 
 2. Compile and run:
     ```bash
-    nasm -f elf64 HTTP.asm -o HTTP.o
-    ld HTTP.o -o HTTP
-    ./HTTP
+    make
+    ./http_server
     ```
 
 3. Test the server using `curl`:
