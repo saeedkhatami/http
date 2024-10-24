@@ -1,0 +1,20 @@
+name: "Run Server"
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  run-server:
+    name: Run Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Make
+        run: make
+
+      - name: Chmod
+        run: chmod +x http_server 
+
+      - name: Run serv
+        run: ./http_server
