@@ -1,18 +1,34 @@
-CC=gcc
-CFLAGS=-Wall -O2
-ASM=nasm
-ASMFLAGS=-f elf64
+CC = gcc
+NASM = nasm
+CFLAGS = -Wall -g
+NASMFLAGS = -f elf64 -g -F dwarf -i src/
 
-all: http_server
+C_SRCS = src/main.c
+ASM_SRCS = src/server_asm.asm
+OBJS = $(C_SRCS:.c=.o) $(ASM_SRCS:.asm=.o)
 
-http_server: main.o server_asm.o
-	$(CC) $(CFLAGS) -o http_server main.o server_asm.o
+TARGET = hybrid_server
 
-main.o: main.c
-	$(CC) $(CFLAGS) -c main.c
+.PHONY: all clean
 
-server_asm.o: server_asm.asm
-	$(ASM) $(ASMFLAGS) server_asm.asm
+all: src/server_constants.inc $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CC) $(OBJS) -o $(TARGET)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+%.o: %.asm
+	$(NASM) $(NASMFLAGS) $< -o $@
+
+src/server_constants.inc:
+	@echo "; DO NOT EDIT" > $@
+	@echo "%define MAX_HEADERS 32" >> $@
+	@echo "%define MAX_HEADER_NAME 64" >> $@
+	@echo "%define MAX_HEADER_VALUE 256" >> $@
+	@echo "%define MAX_PATH 256" >> $@
+	@echo "%define MAX_METHOD 16" >> $@
 
 clean:
-	rm -f http_server *.o
+	rm -f $(OBJS) $(TARGET) src/server_constants.inc

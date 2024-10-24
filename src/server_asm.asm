@@ -1,3 +1,4 @@
+%include "server_constants.inc"
 section .text
 global parse_http_request
 global send_http_response
@@ -7,8 +8,7 @@ global debug_log
 ; parse HTTP request
 ; p:
 ;   rdi - buffer pointer
-;   rsi - method buffer pointer
-;   rdx - path buffer pointer
+;   rsi - request struct pointer
 ; r:
 ;   rax - 0 on success, -1 on failure
 parse_http_request:
@@ -18,12 +18,12 @@ parse_http_request:
     push r12
     push r13
     push r14
+    push r15
 
     mov r12, rdi    ; buffer
-    mov r13, rsi    ; method
-    mov r14, rdx    ; path
+    mov r13, rsi    ; request struct
 
-    ; Parse method
+    ; parse method
     xor rcx, rcx    ; counter
 .parse_method:
     mov al, [r12 + rcx]
@@ -31,19 +31,20 @@ parse_http_request:
     je .method_done
     cmp al, 0
     je .parse_error
-    mov [r13 + rcx], al
+    mov [r13 + rcx], al    ; store in request.method
     inc rcx
-    cmp rcx, 15     ; max method length
+    cmp rcx, MAX_METHOD-1
     jge .parse_error
     jmp .parse_method
 
 .method_done:
-    mov byte [r13 + rcx], 0
+    mov byte [r13 + rcx], 0    ; null terminate
     inc r12
     add r12, rcx    ; move past space
 
-    ; Parse path
+    ; parse path
     xor rcx, rcx
+    lea r14, [r13 + MAX_METHOD]    ; point to request.path
 .parse_path:
     mov al, [r12 + rcx]
     cmp al, ' '
@@ -54,19 +55,22 @@ parse_http_request:
     je .parse_error
     mov [r14 + rcx], al
     inc rcx
-    cmp rcx, 255    ; max path length
+    cmp rcx, MAX_PATH-1
     jge .parse_error
     jmp .parse_path
 
 .path_done:
     mov byte [r14 + rcx], 0
-    xor rax, rax    ; return success
+    
+    ; success
+    xor rax, rax
     jmp .cleanup
 
 .parse_error:
-    mov rax, -1     ; return error
+    mov rax, -1
 
 .cleanup:
+    pop r15
     pop r14
     pop r13
     pop r12
@@ -142,3 +146,6 @@ debug_log:
 
 section .data
     newline db 10
+
+section .bss
+    temp_buffer resb 4096

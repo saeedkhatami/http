@@ -1,0 +1,6 @@
+; NASM
+%define MAX_HEADERS 32
+%define MAX_HEADER_NAME 64
+%define MAX_HEADER_VALUE 256
+%define MAX_PATH 256
+%define MAX_METHOD 16
