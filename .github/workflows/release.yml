@@ -62,6 +62,6 @@ jobs:
         tag: "0.0.${{ github.run_number }}"
         name: "Release v0.0.${{ github.run_number }}"
         commit: ${{ github.sha }}
-        body: "Automated release for build v1.0.${{ github.run_number }}"
+        body: "Automated release for build v0.0.${{ github.run_number }}"
         draft: true
         prerelease: true
