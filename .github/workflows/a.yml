@@ -1,20 +1,30 @@
 name: "Run Server"
+
 on:
   push:
     branches:
       - main
 
+
 jobs:
-  run-server:
-    name: Run Server
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Make
-        run: make
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Chmod
-        run: chmod +x http_server 
+    - name: Dependencies
+      run: |
+        sudo apt update
+        sudo apt install gcc nasm -y
 
-      - name: Run serv
-        run: ./http_server
+    - name: Make
+      run: |
+        make
+
+    - name: Chmod
+      run: chmod +x http_server 
+
+    - name: Run serv
+      run: ./http_server
