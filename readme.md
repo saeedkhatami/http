@@ -1,6 +1,6 @@
-# Simple HTTP Server in Assembly (x86_64)
+# Simple HTTP Server in Assembly and C (x86_64)
 
-This project is a basic HTTP server written in x86_64 Assembly. It currently supports `GET`, `POST`, `PUT`, and `DELETE` methods, with proper error handling for `404 Not Found` and `405 Method Not Allowed`.
+This project is a basic HTTP server written in **x86_64 Assembly** and a splash of **C** for extra flavor!. It currently supports `GET`, `POST`, `PUT`, and `DELETE` methods, with proper error handling for `404 Not Found` and `405 Method Not Allowed`.
 
 **Note**: This project is under development, and many features will be added soon.
 
