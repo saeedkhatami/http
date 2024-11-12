@@ -14,27 +14,48 @@
 #define VERSION_MINOR 0
 #define VERSION_PATCH 2
 
-static const char* HOMEPAGE = "<!DOCTYPE html>\n"
-                            "<html>\n"
-                            "<head><title>Hybrid Server</title></head>\n"
-                            "<body>\n"
-                            "<h1>Welcome to Hybrid C/ASM Server!</h1>\n"
-                            "<ul>\n"
-                            "<li><a href='/about'>About</a></li>\n"
-                            "<li><a href='/test'>Test</a></li>\n"
-                            "</ul>\n"
-                            "</body>\n"
-                            "</html>\n";
+static const char* HOMEPAGE = 
+    "<!DOCTYPE html>\n"
+    "<html>\n"
+    "<head><title>Hybrid Server</title></head>\n"
+    "<body>\n"
+    "<h1>Welcome to Hybrid C/ASM Server!</h1>\n"
+    "<ul>\n"
+    "<li><a href='/about'>About</a></li>\n"
+    "<li><a href='/test'>Test</a></li>\n"
+    "</ul>\n"
+    "</body>\n"
+    "</html>\n";
 
-static const char* ABOUT_PAGE = "<!DOCTYPE html>\n"
-                               "<html>\n"
-                               "<head><title>About</title></head>\n"
-                               "<body>\n"
-                               "<h1>About</h1>\n"
-                               "<p>This server is implemented using C and Assembly!</p>\n"
-                               "<a href='/'>Back to Home</a>\n"
-                               "</body>\n"
-                               "</html>\n";
+static const char* ABOUT_PAGE = 
+    "<!DOCTYPE html>\n"
+    "<html>\n"
+    "<head><title>About</title></head>\n"
+    "<body>\n"
+    "<h1>About</h1>\n"
+    "<p>This server is implemented using C and Assembly!</p>\n"
+    "<a href='/'>Back to Home</a>\n"
+    "</body>\n"
+    "</html>\n";
+
+static const char* HTTP_400 = 
+    "HTTP/1.1 400 Bad Request\r\n"
+    "Content-Type: text/html\r\n"
+    "Content-Length: 145\r\n"
+    "Connection: close\r\n"
+    "\r\n"
+    "<html><head><title>400 Bad Request</title></head>"
+    "<body><h1>400 Bad Request</h1><p>Your browser sent a request that this server could not understand.</p></body></html>";
+
+
+static const char* HTTP_501 = 
+    "HTTP/1.1 501 Not Implemented\r\n"
+    "Content-Type: text/html\r\n"
+    "Content-Length: 129\r\n"
+    "Connection: close\r\n"
+    "\r\n"
+    "<html><head><title>501 Not Implemented</title></head>"
+    "<body><h1>501 Not Implemented</h1><p>Method not implemented.</p></body></html>";
 
 static const char* HTTP_OK_TEMPLATE = 
     "HTTP/1.1 200 OK\r\n"
@@ -66,14 +87,14 @@ static void handle_request(int client_fd) {
 
     if (parse_http_request(buffer, &request) < 0) {
         debug_log("Failed to parse request\n", 22);
-        send_http_response(client_fd, HTTP_404, strlen(HTTP_404));
+        send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
         return;
     }
 
-    char log_buffer[512];
-    snprintf(log_buffer, sizeof(log_buffer), "\nReceived %s request for %s\n", 
-             request.method, request.path);
-    debug_log(log_buffer, strlen(log_buffer));
+    if (strncmp(request.version, "HTTP/1.", 7) != 0) {
+        send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
+        return;
+    }
 
     if (str_compare(request.method, "GET") == 0) {
         char response[BUFFER_SIZE];
@@ -103,8 +124,40 @@ static void handle_request(int client_fd) {
         
         send_http_response(client_fd, response, header_len + content_length);
     }
+    else if (str_compare(request.method, "HEAD") == 0) {
+        char response[BUFFER_SIZE];
+        const char* content_type = "text/html";
+        size_t content_length = 0;
+        
+        if (str_compare(request.path, "/") == 0) {
+            content_length = strlen(HOMEPAGE);
+        }
+        else if (str_compare(request.path, "/about") == 0) {
+            content_length = strlen(ABOUT_PAGE);
+        }
+        else {
+            send_http_response(client_fd, HTTP_404, strlen(HTTP_404));
+            return;
+        }
+
+        int header_len = snprintf(response, BUFFER_SIZE, 
+                                HTTP_OK_TEMPLATE, 
+                                content_type, 
+                                content_length);
+        
+        send_http_response(client_fd, response, header_len);
+    }
+    else if (str_compare(request.method, "OPTIONS") == 0) {
+        const char* options_response = 
+            "HTTP/1.1 200 OK\r\n"
+            "Allow: GET, HEAD, OPTIONS\r\n"
+            "Content-Length: 0\r\n"
+            "Connection: close\r\n"
+            "\r\n";
+        send_http_response(client_fd, options_response, strlen(options_response));
+    }
     else {
-        send_http_response(client_fd, HTTP_404, strlen(HTTP_404));
+        send_http_response(client_fd, HTTP_501, strlen(HTTP_501));
     }
 }
 

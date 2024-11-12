@@ -5,12 +5,6 @@ global send_http_response
 global str_compare
 global debug_log
 
-; parse HTTP request
-; p:
-;   rdi - buffer pointer
-;   rsi - request struct pointer
-; r:
-;   rax - 0 on success, -1 on failure
 parse_http_request:
     push rbp
     mov rbp, rsp
@@ -24,32 +18,32 @@ parse_http_request:
     mov r13, rsi    ; request struct
 
     ; parse method
-    xor rcx, rcx    ; counter
+    xor rcx, rcx
 .parse_method:
     mov al, [r12 + rcx]
     cmp al, ' '
     je .method_done
     cmp al, 0
     je .parse_error
-    mov [r13 + rcx], al    ; store in request.method
+    mov [r13 + rcx], al
     inc rcx
     cmp rcx, MAX_METHOD-1
     jge .parse_error
     jmp .parse_method
 
 .method_done:
-    mov byte [r13 + rcx], 0    ; null terminate
+    mov byte [r13 + rcx], 0
     inc r12
-    add r12, rcx    ; move past space
+    add r12, rcx
 
     ; parse path
     xor rcx, rcx
-    lea r14, [r13 + MAX_METHOD]    ; point to request.path
+    lea r14, [r13 + MAX_METHOD]
 .parse_path:
     mov al, [r12 + rcx]
     cmp al, ' '
     je .path_done
-    cmp al, '?'     ; stop at query string
+    cmp al, '?'
     je .path_done
     cmp al, 0
     je .parse_error
@@ -61,6 +55,98 @@ parse_http_request:
 
 .path_done:
     mov byte [r14 + rcx], 0
+    add r12, rcx
+    inc r12    ; skip space
+
+    ; parse HTTP version
+    xor rcx, rcx
+    lea r14, [r13 + MAX_METHOD + MAX_PATH]
+.parse_version:
+    mov al, [r12 + rcx]
+    cmp al, 13    ; CR
+    je .version_done
+    cmp al, 10    ; LF
+    je .version_done
+    cmp al, 0
+    je .parse_error
+    mov [r14 + rcx], al
+    inc rcx
+    cmp rcx, MAX_VERSION-1
+    jge .parse_error
+    jmp .parse_version
+
+.version_done:
+    mov byte [r14 + rcx], 0
+
+    ; parse headers
+    lea r14, [r13 + MAX_METHOD + MAX_PATH + MAX_VERSION]    ; headers array
+    xor r15, r15    ; header count
+
+.parse_headers:
+    add r12, rcx
+    inc r12    ; skip CR
+    mov al, [r12]
+    cmp al, 10    ; LF
+    jne .parse_error
+    inc r12    ; skip LF
+    
+    mov al, [r12]
+    cmp al, 13    ; CR (end of headers)
+    je .headers_done
+    
+    ; parse header name
+    xor rcx, rcx
+.parse_header_name:
+    mov al, [r12 + rcx]
+    cmp al, ':'
+    je .header_name_done
+    cmp al, 0
+    je .parse_error
+    mov [r14 + rcx], al
+    inc rcx
+    cmp rcx, MAX_HEADER_NAME-1
+    jge .parse_error
+    jmp .parse_header_name
+
+.header_name_done:
+    mov byte [r14 + rcx], 0
+    add r12, rcx
+    inc r12    ; skip :
+    
+    ; skip whitespace
+.skip_header_ws:
+    mov al, [r12]
+    cmp al, ' '
+    jne .parse_header_value
+    inc r12
+    jmp .skip_header_ws
+
+    ; parse header value
+.parse_header_value:
+    xor rcx, rcx
+    lea r14, [r14 + MAX_HEADER_NAME]
+.parse_header_value_loop:
+    mov al, [r12 + rcx]
+    cmp al, 13    ; CR
+    je .header_value_done
+    cmp al, 0
+    je .parse_error
+    mov [r14 + rcx], al
+    inc rcx
+    cmp rcx, MAX_HEADER_VALUE-1
+    jge .parse_error
+    jmp .parse_header_value_loop
+
+.header_value_done:
+    mov byte [r14 + rcx], 0
+    inc r15    ; increment header count
+    lea r14, [r14 + MAX_HEADER_VALUE]    ; next header
+    cmp r15, MAX_HEADERS
+    jge .parse_error
+    jmp .parse_headers
+
+.headers_done:
+    mov [r13 + MAX_METHOD + MAX_PATH + MAX_VERSION - 4], r15d    ; store header count
     
     ; success
     xor rax, rax

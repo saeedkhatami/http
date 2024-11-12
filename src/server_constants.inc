@@ -4,3 +4,5 @@
 %define MAX_HEADER_VALUE 256
 %define MAX_PATH 256
 %define MAX_METHOD 16
+%define MAX_VERSION 16
+%define MAX_STATUS_MSG 32
