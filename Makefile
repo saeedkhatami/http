@@ -12,7 +12,7 @@ TARGET = http_server
 
 .PHONY: all clean
 
-all: src/server_constants.inc $(TARGET)
+all: src/server_constants.inc $(TARGET) public_dir
 
 $(TARGET): $(OBJS)
 	$(CC) $(OBJS) -no-pie -o $(TARGET)
@@ -22,6 +22,9 @@ $(TARGET): $(OBJS)
 
 %.o: %.asm src/server_constants.inc
 	$(NASM) $(NASMFLAGS) $< -o $@
+
+public_dir:
+	@mkdir -p public
 
 src/server_constants.inc:
 	@echo "; DO NOT EDIT" > $@

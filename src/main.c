@@ -5,14 +5,15 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "server.h"
 
 #define PORT 8080
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 0
-#define VERSION_PATCH 2
+#define VERSION_PATCH 3
 
-// Function prototypes
 static void handle_get_request(int client_fd, struct http_request* request);
 static void handle_head_request(int client_fd, struct http_request* request);
 static void handle_post_request(int client_fd, struct http_request* request);
@@ -84,16 +85,60 @@ static const char* HTTP_405 =
     "<body><h1>405 Method Not Allowed</h1><p>The requested method is not allowed.</p></body></html>";
     
 
+
+
+static char* read_html_file(const char* filepath, size_t* content_length) {
+    int fd = open(filepath, O_RDONLY);
+    if (fd < 0) {
+        *content_length = 0;
+        return NULL;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) < 0) {
+        close(fd);
+        *content_length = 0;
+        return NULL;
+    }
+
+    char* buffer = malloc(st.st_size + 1);
+    if (!buffer) {
+        close(fd);
+        *content_length = 0;
+        return NULL;
+    }
+
+    ssize_t bytes_read = read(fd, buffer, st.st_size);
+    close(fd);
+
+    if (bytes_read != st.st_size) {
+        free(buffer);
+        *content_length = 0;
+        return NULL;
+    }
+
+    buffer[st.st_size] = '\0';
+    *content_length = st.st_size;
+    return buffer;
+}
+
 static void handle_get_request(int client_fd, struct http_request* request) {
     char response[BUFFER_SIZE];
     const char* content_type = "text/html";
-    size_t content_length;
+    char* file_content = NULL;
+    size_t content_length = 0;
 
     if (str_compare(request->path, "/") == 0) {
-        content_length = strlen(HOMEPAGE);
+        file_content = read_html_file("public/index.html", &content_length);
     } else if (str_compare(request->path, "/about") == 0) {
-        content_length = strlen(ABOUT_PAGE);
+        file_content = read_html_file("public/about.html", &content_length);
+    } else if (str_compare(request->path, "/contact") == 0) {
+        file_content = read_html_file("public/contact.html", &content_length);
     } else {
+        send_http_response(client_fd, HTTP_404, strlen(HTTP_404));
+        return;
+    }
+    if (!file_content) {
         send_http_response(client_fd, HTTP_404, strlen(HTTP_404));
         return;
     }
@@ -103,8 +148,10 @@ static void handle_get_request(int client_fd, struct http_request* request) {
                               content_type,
                               content_length);
 
-    memcpy(response + header_len, HOMEPAGE, content_length);
+    memcpy(response + header_len, file_content, content_length);
     send_http_response(client_fd, response, header_len + content_length);
+
+    free(file_content);
 }
 
 
@@ -120,7 +167,7 @@ static void handle_request(int client_fd) {
     }
     buffer[bytes_received] = '\0';
 
-    // Add this debug print
+    
     printf("Received request:\n%s\n", buffer);
 
     if (parse_http_request(buffer, &request) < 0) {
@@ -133,13 +180,13 @@ static void handle_request(int client_fd) {
     printf("Parsed request - Method: %s, Path: %s, Version: %s\n", 
            request.method, request.path, request.version);
 
-    // Validate HTTP version
+    
     if (strncmp(request.version, "HTTP/1.", 7) != 0) {
         send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
         return;
     }
 
-    // Handle different HTTP methods based on method_type
+    
     switch (request.method_type) {
         case HTTP_METHOD_GET:
             handle_get_request(client_fd, &request);
@@ -204,14 +251,14 @@ static void handle_head_request(int client_fd, struct http_request* request) {
 }
 
 static void handle_post_request(int client_fd, struct http_request* request) {
-    // Check if the request has a body
+    
     if (!request->body || request->body_length == 0) {
         send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
         return;
     }
 
-    // Here you would typically process the POST data
-    // For this example, we'll just acknowledge receipt
+    
+    
     char response[BUFFER_SIZE];
     const char* success_msg = "<html><body><h1>POST Successful</h1></body></html>";
     size_t content_length = strlen(success_msg);
@@ -226,19 +273,19 @@ static void handle_post_request(int client_fd, struct http_request* request) {
 }
 
 static void handle_put_request(int client_fd, struct http_request* request) {
-    // Similar to POST but typically used for updating existing resources
+    
     if (!request->body || request->body_length == 0) {
         send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
         return;
     }
 
-    // Send 201 Created response
+    
     send_http_response(client_fd, HTTP_201, strlen(HTTP_201));
 }
 
 static void handle_delete_request(int client_fd, struct http_request* request) {
-    // Here you would typically verify the resource exists and delete it
-    // For this example, we'll just send a success response
+    
+    
     send_http_response(client_fd, HTTP_204, strlen(HTTP_204));
 }
 
@@ -257,7 +304,7 @@ static void handle_trace_request(int client_fd, struct http_request* request) {
     char response[BUFFER_SIZE];
     const char* content_type = "message/http";
     
-    // TRACE method should echo back the request
+    
     char trace_body[BUFFER_SIZE];
     int trace_len = snprintf(trace_body, BUFFER_SIZE,
                            "%s %s %s\r\n",
@@ -265,7 +312,7 @@ static void handle_trace_request(int client_fd, struct http_request* request) {
                            request->path,
                            request->version);
 
-    // Add headers to trace body
+    
     for (int i = 0; i < request->header_count; i++) {
         trace_len += snprintf(trace_body + trace_len, BUFFER_SIZE - trace_len,
                             "%s: %s\r\n",
@@ -283,7 +330,7 @@ static void handle_trace_request(int client_fd, struct http_request* request) {
 }
 
 static void handle_patch_request(int client_fd, struct http_request* request) {
-    // Similar to PUT but for partial modifications
+    
     if (!request->body || request->body_length == 0) {
         send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
         return;
