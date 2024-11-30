@@ -1,9 +1,143 @@
 %include "server_constants.inc"
+%define body_offset MAX_METHOD + MAX_PATH + MAX_VERSION + 4
+%define body_length_offset MAX_METHOD + MAX_PATH + MAX_VERSION + 12
+
+section .data
+method_get db "GET", 0
+method_head db "HEAD", 0
+method_post db "POST", 0
+method_put db "PUT", 0
+method_delete db "DELETE", 0
+method_connect db "CONNECT", 0
+method_options db "OPTIONS", 0
+method_trace db "TRACE", 0
+method_patch db "PATCH", 0
+
+extern malloc
+extern find_content_length
+extern find_body_start
+
 section .text
-global parse_http_request
-global send_http_response
-global str_compare
-global debug_log
+    global parse_http_request
+    global send_http_response
+    global str_compare
+    global debug_log
+    global get_method_type
+
+get_method_type:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    
+    mov rbx, rdi        ; input method string
+
+    ; Compare with GET
+    mov rdi, rbx
+    mov rsi, method_get
+    call str_compare
+    test eax, eax
+    jz .is_get
+
+    ; Compare with HEAD
+    mov rdi, rbx
+    mov rsi, method_head
+    call str_compare
+    test eax, eax
+    jz .is_head
+
+    ; Compare with POST
+    mov rdi, rbx
+    mov rsi, method_post
+    call str_compare
+    test eax, eax
+    jz .is_post
+
+    ; Compare with PUT
+    mov rdi, rbx
+    mov rsi, method_put
+    call str_compare
+    test eax, eax
+    jz .is_put
+
+    ; Compare with DELETE
+    mov rdi, rbx
+    mov rsi, method_delete
+    call str_compare
+    test eax, eax
+    jz .is_delete
+
+    ; Compare with CONNECT
+    mov rdi, rbx
+    mov rsi, method_connect
+    call str_compare
+    test eax, eax
+    jz .is_connect
+
+    ; Compare with OPTIONS
+    mov rdi, rbx
+    mov rsi, method_options
+    call str_compare
+    test eax, eax
+    jz .is_options
+
+    ; Compare with TRACE
+    mov rdi, rbx
+    mov rsi, method_trace
+    call str_compare
+    test eax, eax
+    jz .is_trace
+
+    ; Compare with PATCH
+    mov rdi, rbx
+    mov rsi, method_patch
+    call str_compare
+    test eax, eax
+    jz .is_patch
+
+    ; Unknown method
+    mov eax, 0
+    jmp .cleanup
+
+.is_get:
+    mov eax, 1
+    jmp .cleanup
+
+.is_head:
+    mov eax, 2
+    jmp .cleanup
+
+.is_post:
+    mov eax, 3
+    jmp .cleanup
+
+.is_put:
+    mov eax, 4
+    jmp .cleanup
+
+.is_delete:
+    mov eax, 5
+    jmp .cleanup
+
+.is_connect:
+    mov eax, 6
+    jmp .cleanup
+
+.is_options:
+    mov eax, 7
+    jmp .cleanup
+
+.is_trace:
+    mov eax, 8
+    jmp .cleanup
+
+.is_patch:
+    mov eax, 9
+    jmp .cleanup
+
+.cleanup:
+    pop rbx
+    pop rbp
+    ret
 
 parse_http_request:
     push rbp
@@ -17,8 +151,9 @@ parse_http_request:
     mov r12, rdi    ; buffer
     mov r13, rsi    ; request struct
 
-    ; parse method
+    ; Parse method
     xor rcx, rcx
+
 .parse_method:
     mov al, [r12 + rcx]
     cmp al, ' '
@@ -33,9 +168,25 @@ parse_http_request:
 
 .method_done:
     mov byte [r13 + rcx], 0
+    
+    ; Get method type
+    push rcx
+    mov rdi, r13    ; method string
+    call get_method_type
+    mov [r13 + MAX_METHOD - 4], eax    ; store method_type
+    pop rcx
+    
+    ; Skip extra spaces after method
     inc r12
     add r12, rcx
+.skip_method_spaces:
+    mov al, [r12]
+    cmp al, ' '
+    jne .parse_path_start
+    inc r12
+    jmp .skip_method_spaces
 
+.parse_path_start:
     ; parse path
     xor rcx, rcx
     lea r14, [r13 + MAX_METHOD]
@@ -56,17 +207,23 @@ parse_http_request:
 .path_done:
     mov byte [r14 + rcx], 0
     add r12, rcx
-    inc r12    ; skip space
+    
+    ; Skip spaces after path
+.skip_path_spaces:
+    mov al, [r12]
+    cmp al, ' '
+    jne .parse_version_start
+    inc r12
+    jmp .skip_path_spaces
 
+.parse_version_start:
     ; parse HTTP version
     xor rcx, rcx
     lea r14, [r13 + MAX_METHOD + MAX_PATH]
 .parse_version:
     mov al, [r12 + rcx]
     cmp al, 13    ; CR
-    je .version_done
-    cmp al, 10    ; LF
-    je .version_done
+    je .check_version_lf
     cmp al, 0
     je .parse_error
     mov [r14 + rcx], al
@@ -75,24 +232,23 @@ parse_http_request:
     jge .parse_error
     jmp .parse_version
 
-.version_done:
-    mov byte [r14 + rcx], 0
+.check_version_lf:
+    mov byte [r14 + rcx], 0    ; Null terminate version
+    inc r12
+    add r12, rcx    ; Move past version
+    mov al, [r12]
+    cmp al, 10    ; Check for LF after CR
+    jne .parse_error
+    inc r12        ; Skip LF
 
     ; parse headers
     lea r14, [r13 + MAX_METHOD + MAX_PATH + MAX_VERSION]    ; headers array
     xor r15, r15    ; header count
 
 .parse_headers:
-    add r12, rcx
-    inc r12    ; skip CR
-    mov al, [r12]
-    cmp al, 10    ; LF
-    jne .parse_error
-    inc r12    ; skip LF
-    
     mov al, [r12]
     cmp al, 13    ; CR (end of headers)
-    je .headers_done
+    je .check_headers_end
     
     ; parse header name
     xor rcx, rcx
@@ -121,7 +277,6 @@ parse_http_request:
     inc r12
     jmp .skip_header_ws
 
-    ; parse header value
 .parse_header_value:
     xor rcx, rcx
     lea r14, [r14 + MAX_HEADER_NAME]
@@ -139,21 +294,68 @@ parse_http_request:
 
 .header_value_done:
     mov byte [r14 + rcx], 0
+    add r12, rcx
+    mov al, [r12]
+    cmp al, 13    ; Expect CR
+    jne .parse_error
+    inc r12
+    mov al, [r12]
+    cmp al, 10    ; Expect LF
+    jne .parse_error
+    inc r12
+    
     inc r15    ; increment header count
     lea r14, [r14 + MAX_HEADER_VALUE]    ; next header
     cmp r15, MAX_HEADERS
     jge .parse_error
     jmp .parse_headers
 
-.headers_done:
+.check_headers_end:
+    inc r12        ; Skip CR
+    mov al, [r12]
+    cmp al, 10    ; Check for LF
+    jne .parse_error
+    inc r12        ; Skip LF
+
     mov [r13 + MAX_METHOD + MAX_PATH + MAX_VERSION - 4], r15d    ; store header count
+
+    ; Parse body if present
+    jmp .parse_body
+
+.parse_body:
+    ; Check if there's a Content-Length header
+    mov rdi, r12        ; current buffer position
+    call find_content_length
+    test rax, rax
+    jz .success        ; No body to parse - we're done
+
+    ; Store the content length
+    mov [r13 + body_length_offset], rax
     
-    ; success
-    xor rax, rax
-    jmp .cleanup
+    ; Allocate memory for body
+    push rax            ; save content length
+    mov rdi, rax        ; length to allocate
+    call malloc wrt ..plt
+    test rax, rax
+    pop rcx             ; restore content length to rcx
+    jz .parse_error     ; malloc failed
+    
+    ; Store body pointer
+    mov [r13 + body_offset], rax
+    
+    ; Copy body content
+    mov rdi, rax        ; destination (allocated memory)
+    mov rsi, r12        ; source (current buffer position)
+    rep movsb           ; copy rcx bytes from rsi to rdi
+    
+    jmp .success
 
 .parse_error:
     mov rax, -1
+    jmp .cleanup
+
+.success:
+    xor rax, rax
 
 .cleanup:
     pop r15

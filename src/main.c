@@ -8,63 +8,42 @@
 #include "server.h"
 
 #define PORT 8080
-#define BUFFER_SIZE 4096
-
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 0
 #define VERSION_PATCH 2
 
-static const char* HOMEPAGE = 
-    "<!DOCTYPE html>\n"
-    "<html>\n"
-    "<head><title>Hybrid Server</title></head>\n"
-    "<body>\n"
-    "<h1>Welcome to Hybrid C/ASM Server!</h1>\n"
-    "<ul>\n"
-    "<li><a href='/about'>About</a></li>\n"
-    "<li><a href='/test'>Test</a></li>\n"
-    "</ul>\n"
-    "</body>\n"
-    "</html>\n";
+// Function prototypes
+static void handle_get_request(int client_fd, struct http_request* request);
+static void handle_head_request(int client_fd, struct http_request* request);
+static void handle_post_request(int client_fd, struct http_request* request);
+static void handle_put_request(int client_fd, struct http_request* request);
+static void handle_delete_request(int client_fd, struct http_request* request);
+static void handle_options_request(int client_fd, struct http_request* request);
+static void handle_trace_request(int client_fd, struct http_request* request);
+static void handle_patch_request(int client_fd, struct http_request* request);
 
-static const char* ABOUT_PAGE = 
-    "<!DOCTYPE html>\n"
-    "<html>\n"
-    "<head><title>About</title></head>\n"
-    "<body>\n"
-    "<h1>About</h1>\n"
-    "<p>This server is implemented using C and Assembly!</p>\n"
-    "<a href='/'>Back to Home</a>\n"
-    "</body>\n"
-    "</html>\n";
-
-static const char* HTTP_400 = 
-    "HTTP/1.1 400 Bad Request\r\n"
-    "Content-Type: text/html\r\n"
-    "Content-Length: 145\r\n"
-    "Connection: close\r\n"
-    "\r\n"
-    "<html><head><title>400 Bad Request</title></head>"
-    "<body><h1>400 Bad Request</h1><p>Your browser sent a request that this server could not understand.</p></body></html>";
-
-
-static const char* HTTP_501 = 
-    "HTTP/1.1 501 Not Implemented\r\n"
-    "Content-Type: text/html\r\n"
-    "Content-Length: 129\r\n"
-    "Connection: close\r\n"
-    "\r\n"
-    "<html><head><title>501 Not Implemented</title></head>"
-    "<body><h1>501 Not Implemented</h1><p>Method not implemented.</p></body></html>";
-
-static const char* HTTP_OK_TEMPLATE = 
+static const char* HTTP_OK_TEMPLATE =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: %s\r\n"
     "Content-Length: %zu\r\n"
     "Connection: close\r\n"
     "\r\n";
 
-static const char* HTTP_404 = 
+static const char* HOMEPAGE =
+    "<html><body><h1>Welcome</h1></body></html>";
+
+static const char* ABOUT_PAGE =
+    "<html><body><h1>About</h1></body></html>";
+
+static const char* HTTP_400 =
+    "HTTP/1.1 400 Bad Request\r\n"
+    "Content-Type: text/html\r\n"
+    "Content-Length: 97\r\n"
+    "Connection: close\r\n"
+    "\r\n"
+    "<html><head><title>400 Bad Request</title></head><body><h1>400 Bad Request</h1></body></html>";
+
+static const char* HTTP_404 =
     "HTTP/1.1 404 Not Found\r\n"
     "Content-Type: text/html\r\n"
     "Content-Length: 130\r\n"
@@ -72,6 +51,62 @@ static const char* HTTP_404 =
     "\r\n"
     "<html><head><title>404 Not Found</title></head>"
     "<body><h1>404 Not Found</h1><p>The requested page was not found.</p></body></html>";
+
+static const char* HTTP_501 =
+    "HTTP/1.1 501 Not Implemented\r\n"
+    "Content-Type: text/html\r\n"
+    "Content-Length: 103\r\n"
+    "Connection: close\r\n"
+    "\r\n"
+    "<html><head><title>501 Not Implemented</title></head><body><h1>501 Not Implemented</h1></body></html>";
+
+static const char* HTTP_201 = 
+    "HTTP/1.1 201 Created\r\n"
+    "Content-Type: text/html\r\n"
+    "Content-Length: 106\r\n"
+    "Connection: close\r\n"
+    "\r\n"
+    "<html><head><title>201 Created</title></head>"
+    "<body><h1>201 Created</h1><p>Resource created successfully.</p></body></html>";
+
+static const char* HTTP_204 = 
+    "HTTP/1.1 204 No Content\r\n"
+    "Connection: close\r\n"
+    "\r\n";
+
+static const char* HTTP_405 = 
+    "HTTP/1.1 405 Method Not Allowed\r\n"
+    "Content-Type: text/html\r\n"
+    "Content-Length: 144\r\n"
+    "Connection: close\r\n"
+    "\r\n"
+    "<html><head><title>405 Method Not Allowed</title></head>"
+    "<body><h1>405 Method Not Allowed</h1><p>The requested method is not allowed.</p></body></html>";
+    
+
+static void handle_get_request(int client_fd, struct http_request* request) {
+    char response[BUFFER_SIZE];
+    const char* content_type = "text/html";
+    size_t content_length;
+
+    if (str_compare(request->path, "/") == 0) {
+        content_length = strlen(HOMEPAGE);
+    } else if (str_compare(request->path, "/about") == 0) {
+        content_length = strlen(ABOUT_PAGE);
+    } else {
+        send_http_response(client_fd, HTTP_404, strlen(HTTP_404));
+        return;
+    }
+
+    int header_len = snprintf(response, BUFFER_SIZE,
+                              HTTP_OK_TEMPLATE,
+                              content_type,
+                              content_length);
+
+    memcpy(response + header_len, HOMEPAGE, content_length);
+    send_http_response(client_fd, response, header_len + content_length);
+}
+
 
 static void handle_request(int client_fd) {
     char buffer[BUFFER_SIZE];
@@ -85,80 +120,186 @@ static void handle_request(int client_fd) {
     }
     buffer[bytes_received] = '\0';
 
+    // Add this debug print
+    printf("Received request:\n%s\n", buffer);
+
     if (parse_http_request(buffer, &request) < 0) {
+        printf("Failed to parse request\n");
         debug_log("Failed to parse request\n", 22);
         send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
         return;
     }
 
+    printf("Parsed request - Method: %s, Path: %s, Version: %s\n", 
+           request.method, request.path, request.version);
+
+    // Validate HTTP version
     if (strncmp(request.version, "HTTP/1.", 7) != 0) {
         send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
         return;
     }
 
-    if (str_compare(request.method, "GET") == 0) {
-        char response[BUFFER_SIZE];
-        const char* content;
-        const char* content_type = "text/html";
-        size_t content_length;
-
-        if (str_compare(request.path, "/") == 0) {
-            content = HOMEPAGE;
-            content_length = strlen(HOMEPAGE);
-        }
-        else if (str_compare(request.path, "/about") == 0) {
-            content = ABOUT_PAGE;
-            content_length = strlen(ABOUT_PAGE);
-        }
-        else {
-            send_http_response(client_fd, HTTP_404, strlen(HTTP_404));
-            return;
-        }
-
-        int header_len = snprintf(response, BUFFER_SIZE, 
-                                HTTP_OK_TEMPLATE, 
-                                content_type, 
-                                content_length);
-        
-        memcpy(response + header_len, content, content_length);
-        
-        send_http_response(client_fd, response, header_len + content_length);
+    // Handle different HTTP methods based on method_type
+    switch (request.method_type) {
+        case HTTP_METHOD_GET:
+            handle_get_request(client_fd, &request);
+            break;
+            
+        case HTTP_METHOD_HEAD:
+            handle_head_request(client_fd, &request);
+            break;
+            
+        case HTTP_METHOD_POST:
+            handle_post_request(client_fd, &request);
+            break;
+            
+        case HTTP_METHOD_PUT:
+            handle_put_request(client_fd, &request);
+            break;
+            
+        case HTTP_METHOD_DELETE:
+            handle_delete_request(client_fd, &request);
+            break;
+            
+        case HTTP_METHOD_OPTIONS:
+            handle_options_request(client_fd, &request);
+            break;
+            
+        case HTTP_METHOD_TRACE:
+            handle_trace_request(client_fd, &request);
+            break;
+            
+        case HTTP_METHOD_PATCH:
+            handle_patch_request(client_fd, &request);
+            break;
+            
+        default:
+            send_http_response(client_fd, HTTP_501, strlen(HTTP_501));
+            break;
     }
-    else if (str_compare(request.method, "HEAD") == 0) {
-        char response[BUFFER_SIZE];
-        const char* content_type = "text/html";
-        size_t content_length = 0;
-        
-        if (str_compare(request.path, "/") == 0) {
-            content_length = strlen(HOMEPAGE);
-        }
-        else if (str_compare(request.path, "/about") == 0) {
-            content_length = strlen(ABOUT_PAGE);
-        }
-        else {
-            send_http_response(client_fd, HTTP_404, strlen(HTTP_404));
-            return;
-        }
+}
 
-        int header_len = snprintf(response, BUFFER_SIZE, 
-                                HTTP_OK_TEMPLATE, 
-                                content_type, 
-                                content_length);
-        
-        send_http_response(client_fd, response, header_len);
+static void handle_head_request(int client_fd, struct http_request* request) {
+    char response[BUFFER_SIZE];
+    const char* content_type = "text/html";
+    size_t content_length;
+    
+    if (str_compare(request->path, "/") == 0) {
+        content_length = strlen(HOMEPAGE);
     }
-    else if (str_compare(request.method, "OPTIONS") == 0) {
-        const char* options_response = 
-            "HTTP/1.1 200 OK\r\n"
-            "Allow: GET, HEAD, OPTIONS\r\n"
-            "Content-Length: 0\r\n"
-            "Connection: close\r\n"
-            "\r\n";
-        send_http_response(client_fd, options_response, strlen(options_response));
+    else if (str_compare(request->path, "/about") == 0) {
+        content_length = strlen(ABOUT_PAGE);
     }
     else {
-        send_http_response(client_fd, HTTP_501, strlen(HTTP_501));
+        send_http_response(client_fd, HTTP_404, strlen(HTTP_404));
+        return;
     }
+
+    int header_len = snprintf(response, BUFFER_SIZE, 
+                            HTTP_OK_TEMPLATE, 
+                            content_type, 
+                            content_length);
+    
+    send_http_response(client_fd, response, header_len);
+}
+
+static void handle_post_request(int client_fd, struct http_request* request) {
+    // Check if the request has a body
+    if (!request->body || request->body_length == 0) {
+        send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
+        return;
+    }
+
+    // Here you would typically process the POST data
+    // For this example, we'll just acknowledge receipt
+    char response[BUFFER_SIZE];
+    const char* success_msg = "<html><body><h1>POST Successful</h1></body></html>";
+    size_t content_length = strlen(success_msg);
+
+    int header_len = snprintf(response, BUFFER_SIZE,
+                            HTTP_OK_TEMPLATE,
+                            "text/html",
+                            content_length);
+
+    memcpy(response + header_len, success_msg, content_length);
+    send_http_response(client_fd, response, header_len + content_length);
+}
+
+static void handle_put_request(int client_fd, struct http_request* request) {
+    // Similar to POST but typically used for updating existing resources
+    if (!request->body || request->body_length == 0) {
+        send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
+        return;
+    }
+
+    // Send 201 Created response
+    send_http_response(client_fd, HTTP_201, strlen(HTTP_201));
+}
+
+static void handle_delete_request(int client_fd, struct http_request* request) {
+    // Here you would typically verify the resource exists and delete it
+    // For this example, we'll just send a success response
+    send_http_response(client_fd, HTTP_204, strlen(HTTP_204));
+}
+
+static void handle_options_request(int client_fd, struct http_request* request) {
+    const char* options_response = 
+        "HTTP/1.1 200 OK\r\n"
+        "Allow: GET, HEAD, POST, PUT, DELETE, OPTIONS, TRACE, PATCH\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+    
+    send_http_response(client_fd, options_response, strlen(options_response));
+}
+
+static void handle_trace_request(int client_fd, struct http_request* request) {
+    char response[BUFFER_SIZE];
+    const char* content_type = "message/http";
+    
+    // TRACE method should echo back the request
+    char trace_body[BUFFER_SIZE];
+    int trace_len = snprintf(trace_body, BUFFER_SIZE,
+                           "%s %s %s\r\n",
+                           request->method,
+                           request->path,
+                           request->version);
+
+    // Add headers to trace body
+    for (int i = 0; i < request->header_count; i++) {
+        trace_len += snprintf(trace_body + trace_len, BUFFER_SIZE - trace_len,
+                            "%s: %s\r\n",
+                            request->headers[i].name,
+                            request->headers[i].value);
+    }
+
+    int header_len = snprintf(response, BUFFER_SIZE,
+                            HTTP_OK_TEMPLATE,
+                            content_type,
+                            trace_len);
+
+    memcpy(response + header_len, trace_body, trace_len);
+    send_http_response(client_fd, response, header_len + trace_len);
+}
+
+static void handle_patch_request(int client_fd, struct http_request* request) {
+    // Similar to PUT but for partial modifications
+    if (!request->body || request->body_length == 0) {
+        send_http_response(client_fd, HTTP_400, strlen(HTTP_400));
+        return;
+    }
+
+    char response[BUFFER_SIZE];
+    const char* success_msg = "<html><body><h1>PATCH Successful</h1></body></html>";
+    size_t content_length = strlen(success_msg);
+
+    int header_len = snprintf(response, BUFFER_SIZE,
+                            HTTP_OK_TEMPLATE,
+                            "text/html",
+                            content_length);
+
+    memcpy(response + header_len, success_msg, content_length);
+    send_http_response(client_fd, response, header_len + content_length);
 }
 
 void log_version_info() {
