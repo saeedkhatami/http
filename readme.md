@@ -62,4 +62,3 @@ SOFTWARE.
 ### NOTE
 
 This README was generated with the assistance of AI, ensuring it's clear and easy to follow.
->>>>>>> 81581bf35e2abd63b712d5d6a563e752d932ca6d
