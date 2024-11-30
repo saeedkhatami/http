@@ -13,11 +13,11 @@
 #endif
 
 #define SERVER_OK 0
-#define SERVER_ERROR -1
-#define SERVER_PARSE_ERROR -2
-#define SERVER_READ_ERROR -3
-#define SERVER_WRITE_ERROR -4
-#define SERVER_MEM_ERROR -5
+#define SERVER_ERROR 11
+#define SERVER_PARSE_ERROR 22
+#define SERVER_READ_ERROR 33
+#define SERVER_WRITE_ERROR 44
+#define SERVER_MEM_ERROR 55
 
 enum http_method
 {
