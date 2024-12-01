@@ -39,11 +39,11 @@ curl -X POST -d "name=ASD&email=ASD@ASD.ASD" 127.0.0.1:8080/contact
 
 just go to one of this pages:
 
-- [127.0.0.1:8080/contact](127.0.0.1:8080/contact)
+- [127.0.0.1:8080/contact](http://127.0.0.1:8080/contact)
 
-- [127.0.0.1:8080/about](127.0.0.1:8080/about)
+- [127.0.0.1:8080/about](http://127.0.0.1:8080/about)
 
-- [127.0.0.1:8080/](127.0.0.1:8080/)
+- [127.0.0.1:8080/](http://127.0.0.1:8080/)
 
 ## Performance Characteristics
 - Minimal memory overhead
