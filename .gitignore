@@ -1,5 +1,1 @@
 *.o
-http_server
-*.txt
-.rep*
-rep*

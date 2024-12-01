@@ -1,43 +1,73 @@
-# Simple HTTP Server in Assembly and C (x86_64)
+# HTTP
 
-This project is a basic HTTP server written in **x86_64 Assembly** and a splash of **C** for extra flavor!. It currently supports `GET`.
-
-Other HTTP methods (`POST`, `PUT`, `DELETE`, etc.) are not currently supported and will return **404 Not Found**.
-
-**Note**: This project is under development, and many features will be added soon.
+## Overview
+This is a minimal HTTP server implemented in pure x86-64 assembly language, demonstrating low-level network programming and system calls.
 
 ## Features
+- Basic HTTP GET and POST request handling
+- Routing for different endpoints
+- Manual memory management
+- Direct system call interactions
 
-- Supports HTTP methods: `GET`
-- Routes:
-  - `/` - Root (Welcome)
-  - `/about` - About page
+## Endpoints
 
-## Setup
+### GET Requests
+- `/`: Returns a welcome message
+- `/about`: Displays information about the server
+- `/contact`: Shows contact page details
 
-1. Clone and navigate to the project:
-    ```bash
-    git clone https://github.com/saeedkhatami/http.git
-    cd http
-    ```
+### POST Requests
+- `/`: Echoes back the POST request body
+- `/contact`: Processes and returns contact form data
 
-2. Compile and run:
-    ```bash
-    make
-    ./http_server
-    ```
+## Example Interactions
 
-3. Test the server using `curl`:
-    ```bash
-    curl http://localhost:8080/
-    curl -X POST http://localhost:8080/
-    ```
+### Using curl for GET Requests
+```bash
+curl 127.0.0.1:8080/
 
-## License
+curl 127.0.0.1:8080/about
 
-MIT [License](LICENSE)
+curl 127.0.0.1:8080/contact
 
-```text
+curl -X POST -d "ASD" 127.0.0.1:8080/
+
+curl -X POST -d "name=ASD&email=ASD@ASD.ASD" 127.0.0.1:8080/contact
+```
+
+### Using Browser 
+
+just go to one of this pages:
+
+- [127.0.0.1:8080/contact](127.0.0.1:8080/contact)
+
+- [127.0.0.1:8080/about](127.0.0.1:8080/about)
+
+- [127.0.0.1:8080/](127.0.0.1:8080/)
+
+## Performance Characteristics
+- Minimal memory overhead
+- Direct syscall usage
+- No external library dependencies
+- Low latency response handling
+
+## Technical Details
+- Assembler: NASM
+- Architecture: x86-64
+- Operating System: Linux
+- Syscalls used: `socket()`, `bind()`, `listen()`, `accept()`, `read()`, `write()`, `close()`
+
+## Limitations
+- Basic error handling
+- No SSL/TLS support
+- Single-threaded
+- Minimal request parsing
+
+## LICENSE
+
+```LICENSE
+MIT License
+
 Copyright (c) 2024 Saeed Khatami
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -58,7 +88,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-### NOTE
-
-This README was generated with the assistance of AI, ensuring it's clear and easy to follow.
