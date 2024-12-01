@@ -19,7 +19,6 @@ section .data
     post_contact_response db 'Contact POST Response: ', 0
 
     post_body_label db 'Received POST data: ', 0
-    post_body_buffer resb 512
 
     http_ok db 'HTTP/1.1 200 OK', 13, 10
             db 'Content-Type: text/plain', 13, 10
@@ -55,6 +54,7 @@ section .data
     contact_response_len equ $ - contact_response
 
 section .bss
+    post_body_buffer resb 512
     body_length resd 1
     buffer resb 1024
     client_socket resd 1
@@ -125,6 +125,12 @@ handle_get:
     call strcmp
     test rax, rax
     jz send_get_root_response
+
+    mov rsi, path
+    mov rdi, about_path
+    call strcmp
+    test rax, rax
+    jz send_get_about_response
 
     mov rsi, path
     mov rdi, contact_path
@@ -301,6 +307,11 @@ send_not_found:
 send_get_root_response:
     mov rsi, root_response
     mov rdx, root_response_len
+    jmp send_response
+
+send_get_about_response:
+    mov rsi, about_response
+    mov rdx, about_response_len
     jmp send_response
 
 send_get_contact_response:
